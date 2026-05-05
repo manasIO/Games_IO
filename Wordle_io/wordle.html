@@ -1,0 +1,875 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Wordle.IO — Word of the Day</title>
+  <style>
+    /* ── Reset & Base ─────────────────────────────────────────── */
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:        #0d0d1a;
+      --surface:   #16162a;
+      --border:    #2e2e4a;
+      --text:      #e8e8ff;
+      --muted:     #666688;
+      --green:     #22c55e;
+      --yellow:    #f59e0b;
+      --red:       #ef4444;
+      --purple:    #a855f7;
+      --cyan:      #06b6d4;
+      --pink:      #ec4899;
+      --tile-size: clamp(52px, 11vw, 68px);
+      --gap:       6px;
+      --radius:    10px;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Segoe UI', system-ui, sans-serif;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      overflow-x: hidden;
+      background-image:
+        radial-gradient(ellipse 80% 50% at 20% -10%, rgba(168,85,247,.15) 0%, transparent 60%),
+        radial-gradient(ellipse 80% 50% at 80% 110%, rgba(6,182,212,.1) 0%, transparent 60%);
+    }
+
+    /* ── Header ───────────────────────────────────────────────── */
+    header {
+      width: 100%;
+      max-width: 560px;
+      padding: 18px 20px 10px;
+      text-align: center;
+      position: relative;
+    }
+
+    .logo {
+      font-size: clamp(1.6rem, 5vw, 2.4rem);
+      font-weight: 900;
+      letter-spacing: .12em;
+      background: linear-gradient(135deg, var(--purple) 0%, var(--cyan) 50%, var(--pink) 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      text-shadow: none;
+      filter: drop-shadow(0 0 18px rgba(168,85,247,.5));
+    }
+
+    .subtitle {
+      font-size: .78rem;
+      color: var(--muted);
+      letter-spacing: .15em;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+
+    .header-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-top: 10px;
+      padding: 0 4px;
+    }
+
+    .date-badge {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: .72rem;
+      color: var(--muted);
+      letter-spacing: .06em;
+    }
+
+    .stats-btn {
+      background: none;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      border-radius: 20px;
+      padding: 4px 12px;
+      font-size: .72rem;
+      cursor: pointer;
+      letter-spacing: .06em;
+      transition: border-color .2s, color .2s;
+    }
+    .stats-btn:hover { border-color: var(--purple); color: var(--purple); }
+
+    hr.divider {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 10px 0 0;
+      width: 100%;
+    }
+
+    /* ── Toast ────────────────────────────────────────────────── */
+    #toast-container {
+      position: fixed;
+      top: 80px;
+      left: 50%;
+      transform: translateX(-50%);
+      z-index: 100;
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      pointer-events: none;
+    }
+
+    .toast {
+      background: var(--text);
+      color: var(--bg);
+      padding: 10px 20px;
+      border-radius: 30px;
+      font-weight: 700;
+      font-size: .9rem;
+      animation: toastIn .25s ease, toastOut .4s ease 1.8s forwards;
+      white-space: nowrap;
+    }
+
+    @keyframes toastIn  { from { opacity:0; transform:translateY(-12px) scale(.9); } to { opacity:1; transform:none; } }
+    @keyframes toastOut { to   { opacity:0; transform:translateY(-8px) scale(.95); } }
+
+    /* ── Grid ─────────────────────────────────────────────────── */
+    #grid {
+      display: grid;
+      grid-template-rows: repeat(5, var(--tile-size));
+      gap: var(--gap);
+      padding: 20px 0 16px;
+    }
+
+    .row {
+      display: grid;
+      grid-template-columns: repeat(5, var(--tile-size));
+      gap: var(--gap);
+    }
+
+    .tile {
+      width: var(--tile-size);
+      height: var(--tile-size);
+      border: 2px solid var(--border);
+      border-radius: var(--radius);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-size: clamp(1.2rem, 4vw, 1.8rem);
+      font-weight: 900;
+      text-transform: uppercase;
+      color: var(--text);
+      background: var(--surface);
+      position: relative;
+      perspective: 250px;
+      transition: border-color .1s;
+      user-select: none;
+    }
+
+    .tile[data-letter]:not([data-letter=""]) {
+      border-color: #4a4a6a;
+      animation: pop .1s ease;
+    }
+
+    @keyframes pop {
+      0%   { transform: scale(1); }
+      50%  { transform: scale(1.12); }
+      100% { transform: scale(1); }
+    }
+
+    /* flip animation */
+    .tile.flip {
+      animation: flip .5s ease forwards;
+    }
+    .tile:nth-child(1).flip { animation-delay: 0s; }
+    .tile:nth-child(2).flip { animation-delay: .1s; }
+    .tile:nth-child(3).flip { animation-delay: .2s; }
+    .tile:nth-child(4).flip { animation-delay: .3s; }
+    .tile:nth-child(5).flip { animation-delay: .4s; }
+
+    @keyframes flip {
+      0%   { transform: rotateX(0deg); }
+      45%  { transform: rotateX(-90deg); }
+      55%  { transform: rotateX(-90deg); }
+      100% { transform: rotateX(0deg); }
+    }
+
+    .tile.green  { background: var(--green);  border-color: var(--green);  color: #fff; }
+    .tile.yellow { background: var(--yellow); border-color: var(--yellow); color: #fff; }
+    .tile.gray   { background: #2e2e44;       border-color: #2e2e44;       color: var(--muted); }
+
+    /* shake */
+    .row.shake {
+      animation: shake .45s ease;
+    }
+    @keyframes shake {
+      0%,100% { transform: translateX(0); }
+      15%      { transform: translateX(-6px); }
+      30%      { transform: translateX(6px); }
+      45%      { transform: translateX(-4px); }
+      60%      { transform: translateX(4px); }
+      75%      { transform: translateX(-2px); }
+    }
+
+    /* bounce on win */
+    .row.bounce .tile {
+      animation: bounce .6s ease forwards;
+    }
+    .row.bounce .tile:nth-child(1) { animation-delay: 0s; }
+    .row.bounce .tile:nth-child(2) { animation-delay: .1s; }
+    .row.bounce .tile:nth-child(3) { animation-delay: .2s; }
+    .row.bounce .tile:nth-child(4) { animation-delay: .3s; }
+    .row.bounce .tile:nth-child(5) { animation-delay: .4s; }
+
+    @keyframes bounce {
+      0%,20%,50%,80%,100% { transform: translateY(0); }
+      40%  { transform: translateY(-18px); }
+      60%  { transform: translateY(-9px); }
+    }
+
+    /* ── Keyboard ─────────────────────────────────────────────── */
+    #keyboard {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      padding: 0 10px 24px;
+      width: 100%;
+      max-width: 520px;
+    }
+
+    .kb-row {
+      display: flex;
+      justify-content: center;
+      gap: 5px;
+    }
+
+    .key {
+      height: 56px;
+      min-width: 36px;
+      padding: 0 8px;
+      border: none;
+      border-radius: 8px;
+      background: #252540;
+      color: var(--text);
+      font-size: .9rem;
+      font-weight: 700;
+      cursor: pointer;
+      text-transform: uppercase;
+      flex: 1;
+      max-width: 42px;
+      transition: background .2s, color .2s, transform .08s;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      user-select: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .key.wide { max-width: 66px; font-size: .75rem; }
+
+    .key:active { transform: scale(.94); }
+
+    .key.green  { background: var(--green);  color: #fff; }
+    .key.yellow { background: var(--yellow); color: #fff; }
+    .key.gray   { background: #1e1e34; color: var(--muted); }
+
+    /* ── Stats Modal ──────────────────────────────────────────── */
+    #modal-overlay {
+      display: none;
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,.7);
+      backdrop-filter: blur(6px);
+      z-index: 50;
+      align-items: center;
+      justify-content: center;
+    }
+    #modal-overlay.open { display: flex; }
+
+    .modal {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 28px 32px;
+      width: min(380px, 90vw);
+      text-align: center;
+      box-shadow: 0 0 40px rgba(168,85,247,.2);
+      animation: modalIn .3s cubic-bezier(.175,.885,.32,1.275);
+    }
+
+    @keyframes modalIn { from { transform: scale(.8); opacity:0; } to { transform: scale(1); opacity:1; } }
+
+    .modal h2 {
+      font-size: 1.3rem;
+      letter-spacing: .1em;
+      text-transform: uppercase;
+      background: linear-gradient(135deg, var(--purple), var(--cyan));
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      background-clip: text;
+      margin-bottom: 20px;
+    }
+
+    .stats-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 10px;
+      margin-bottom: 22px;
+    }
+
+    .stat-box {
+      background: var(--bg);
+      border-radius: 10px;
+      padding: 10px 4px;
+    }
+
+    .stat-num {
+      font-size: 2rem;
+      font-weight: 900;
+      color: var(--purple);
+    }
+
+    .stat-lbl {
+      font-size: .62rem;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: .06em;
+      margin-top: 2px;
+    }
+
+    .dist-row {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 5px;
+    }
+
+    .dist-lbl { color: var(--muted); font-size: .8rem; width: 12px; text-align: right; }
+
+    .dist-bar-wrap { flex: 1; background: var(--bg); border-radius: 4px; overflow: hidden; height: 20px; }
+
+    .dist-bar {
+      height: 100%;
+      background: linear-gradient(90deg, var(--purple), var(--cyan));
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 6px;
+      font-size: .72rem;
+      font-weight: 700;
+      color: #fff;
+      min-width: 24px;
+      transition: width .6s ease;
+    }
+
+    .modal-close {
+      margin-top: 20px;
+      padding: 10px 28px;
+      background: linear-gradient(135deg, var(--purple), var(--cyan));
+      border: none;
+      border-radius: 30px;
+      color: #fff;
+      font-weight: 700;
+      font-size: .95rem;
+      cursor: pointer;
+      letter-spacing: .05em;
+      transition: opacity .2s;
+    }
+    .modal-close:hover { opacity: .85; }
+
+    /* ── Next word countdown ──────────────────────────────────── */
+    #next-word {
+      color: var(--muted);
+      font-size: .75rem;
+      text-align: center;
+      margin-bottom: 6px;
+      letter-spacing: .05em;
+    }
+    #next-word span { color: var(--cyan); font-weight: 700; }
+
+    /* ── Confetti ─────────────────────────────────────────────── */
+    #confetti-canvas {
+      position: fixed;
+      top: 0; left: 0;
+      width: 100%; height: 100%;
+      pointer-events: none;
+      z-index: 200;
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="confetti-canvas"></canvas>
+
+<header>
+  <div class="logo">WORDLE.IO</div>
+  <div class="subtitle">Word of the Day</div>
+  <div class="header-row">
+    <div class="date-badge" id="date-display"></div>
+    <button class="stats-btn" onclick="openStats()">📊 Stats</button>
+  </div>
+  <hr class="divider" />
+</header>
+
+<div id="toast-container"></div>
+
+<div id="grid"></div>
+
+<div id="keyboard">
+  <div class="kb-row" id="kb-row-1"></div>
+  <div class="kb-row" id="kb-row-2"></div>
+  <div class="kb-row" id="kb-row-3"></div>
+</div>
+
+<!-- Stats Modal -->
+<div id="modal-overlay" onclick="closeStats(event)">
+  <div class="modal">
+    <h2>Statistics</h2>
+    <div class="stats-grid">
+      <div class="stat-box"><div class="stat-num" id="s-played">0</div><div class="stat-lbl">Played</div></div>
+      <div class="stat-box"><div class="stat-num" id="s-winpct">0</div><div class="stat-lbl">Win %</div></div>
+      <div class="stat-box"><div class="stat-num" id="s-streak">0</div><div class="stat-lbl">Streak</div></div>
+      <div class="stat-box"><div class="stat-num" id="s-maxstreak">0</div><div class="stat-lbl">Max Streak</div></div>
+    </div>
+    <div id="dist-bars"></div>
+    <div id="next-word" style="margin-top:14px"></div>
+    <button class="modal-close" onclick="closeStats()">CLOSE</button>
+  </div>
+</div>
+
+<script>
+// ── Word List ──────────────────────────────────────────────────
+const WORDS = [
+  "about","above","abuse","actor","acute","admit","adopt","adult","after","again",
+  "agent","agree","ahead","alarm","album","alert","alien","align","alike","alive",
+  "alley","allow","alloy","alone","along","aloud","alpha","alter","angel","anger",
+  "angle","angry","anime","ankle","annex","antic","anvil","apart","apple","apply",
+  "arena","argue","arise","armor","arose","array","arrow","asked","asset","atlas",
+  "attic","audio","audit","avoid","awake","award","aware","awful","badly","baker",
+  "basic","basis","batch","beach","beard","beast","begin","being","below","bench",
+  "bible","birth","black","blade","blame","bland","blank","blast","blaze","bleak",
+  "bleed","bless","blind","block","blood","bloom","blown","board","boost","booth",
+  "bound","brain","brand","brave","bread","break","breed","brick","bride","brief",
+  "bring","brink","brisk","broad","broke","brood","brown","build","built","bulge",
+  "burst","buyer","cabin","cable","camel","candy","carry","catch","cause","cedar",
+  "chain","chair","chalk","chaos","charm","chart","chase","cheap","check","cheer",
+  "chess","chest","chief","child","chill","choir","claim","clash","class","clean",
+  "clear","clerk","click","cliff","climb","cling","clock","clone","close","cloth",
+  "cloud","clown","cluck","clump","coast","cobra","color","comic","comma","coral",
+  "count","court","cover","crack","craft","crane","crash","crazy","cream","creek",
+  "crime","crisp","cross","crowd","crown","cruel","crush","crypt","cubic","curse",
+  "curve","cycle","daily","dance","darts","datum","debug","decay","delta","demon",
+  "dense","depot","depth","derby","devil","digit","dingo","dirty","disco","ditto",
+  "dodge","doing","doubt","dough","draft","drain","drama","drape","drawn","dream",
+  "dress","drift","drink","drive","drone","drops","drove","drums","dryer","duchy",
+  "dunce","dying","eager","early","earth","eight","elect","email","ember","empty",
+  "enemy","enjoy","enter","entry","equal","error","essay","event","every","exact",
+  "excel","exist","extra","fable","faith","false","fancy","fatal","fault","feast",
+  "fence","fever","fiber","field","fiery","fifth","fifty","fight","final","first",
+  "fixed","flame","flash","flask","fleet","flesh","float","flock","flood","floor",
+  "flora","flour","focus","force","forge","forth","found","frame","frank","fraud",
+  "fresh","front","frost","froze","fruit","fully","funny","gains","games","gauge",
+  "genre","ghost","giant","given","gizmo","glass","globe","gloom","gloss","glove",
+  "glyph","gnome","going","grace","grade","grant","grasp","grass","grave","graze",
+  "great","green","grief","grind","groan","groin","group","grove","growl","guard",
+  "guess","guest","guide","guild","guilt","guise","gusto","habit","happy","harsh",
+  "haste","havoc","heart","heavy","hedge","heron","hinge","hippo","hobby","holly",
+  "honor","horse","hotel","hound","hover","human","humor","hurry","hustle","hydra",
+  "ideal","image","imply","inbox","index","indie","infer","input","irony","ivory",
+  "jaunt","jewel","joint","joust","joker","judge","juice","juicy","jumbo","kayak",
+  "ketch","knack","kneel","knife","knock","known","label","lapse","laser","latch",
+  "later","laugh","layer","leafy","learn","least","leave","legal","lemon","level",
+  "light","limit","linen","liner","logic","loose","lover","lucky","lunar","lyric",
+  "magic","major","maker","manor","maple","march","marry","match","mayor","media",
+  "mercy","merit","metal","might","minor","minus","mirth","mixer","model","money",
+  "month","moral","mossy","motor","mount","mouse","moved","movie","muddy","music",
+  "naive","nerve","never","night","ninja","noble","noise","north","noted","novel",
+  "nurse","nymph","occur","ocean","offer","often","olive","onset","opera","orbit",
+  "order","organ","other","otter","ought","outer","outdo","owing","oxide","ozone",
+  "paint","panic","paper","party","pasta","pasty","patch","pause","peace","pearl",
+  "perky","phase","phone","photo","piano","pilot","pinch","pixel","pizza","place",
+  "plain","plane","plant","plate","plaza","plead","pluck","plumb","plume","plump",
+  "plunge","point","poker","polar","poppy","posed","power","price","pride","prime",
+  "print","prior","prize","probe","proof","prose","proud","prove","psalm","pudgy",
+  "pulse","punch","purge","queen","query","queue","quest","quick","quiet","quota",
+  "quote","radar","radio","raise","rally","range","rapid","ratio","reach","react",
+  "ready","realm","rebel","refer","reign","relax","relay","remit","remix","repay",
+  "reply","rerun","reset","ridge","risky","rival","river","robot","rocky","roman",
+  "rough","round","route","rover","rowdy","royal","rugby","ruler","rumor","rural",
+  "salad","sauce","scale","scene","scone","score","scout","scrap","screw","scrub",
+  "sedan","sense","serve","setup","seven","shade","shake","shall","shame","shape",
+  "share","sharp","sheep","sheet","shelf","shell","shift","shine","shirt","shock",
+  "shoot","shore","short","shout","shove","shown","siege","sigma","silly","since",
+  "sixth","sixty","sized","skill","slate","slave","sleep","slice","slide","slope",
+  "small","smart","smash","smell","smile","smoke","snake","solar","solid","solve",
+  "sonic","sorry","south","space","spark","spawn","speak","speed","spelt","spend",
+  "spice","spike","spine","spite","split","spoke","spook","sport","spout","spray",
+  "squad","stack","staff","stage","stain","stake","stand","start","state","stays",
+  "steam","steel","steep","steer","stern","stiff","still","stock","stomp","store",
+  "storm","story","stout","stove","staff","strap","straw","stray","strip","study",
+  "stuck","stump","style","sugar","suite","sunny","super","surge","swamp","swear",
+  "swipe","swirl","sworn","table","taste","teach","teeth","tempo","tense","tenth",
+  "terms","theme","there","these","thick","thing","think","third","those","three",
+  "threw","throw","thumb","tiger","tight","timer","title","toast","today","token",
+  "total","touch","tough","tower","toxic","track","trade","trail","train","trait",
+  "tramp","trash","trend","tribe","trick","tried","troop","trove","truck","truly",
+  "trump","trunk","trust","truth","tumor","tuned","twist","typed","ultra","under",
+  "unify","union","unite","until","upper","upset","urban","usher","usual","utter",
+  "valid","value","valve","vapor","vault","video","vigor","viral","virus","visit",
+  "visor","vista","vital","vivid","vocal","voice","voter","waltz","waste","watch",
+  "water","weave","wedge","weird","wheat","wheel","where","which","while","white",
+  "whole","whose","wider","witty","woman","women","world","worry","worse","worst",
+  "worth","would","wound","wrath","wrist","wrote","yacht","yearn","yield","young",
+  "youth","zebra","zoned","zooms"
+].filter(w => w.length === 5);
+
+const VALID_GUESSES = new Set(WORDS);
+
+// ── Daily Word ─────────────────────────────────────────────────
+function getDailyWord() {
+  const start = new Date(2025, 0, 1);
+  const now   = new Date();
+  const diff  = Math.floor((now - start) / 86400000);
+  return WORDS[diff % WORDS.length].toUpperCase();
+}
+
+// ── State ──────────────────────────────────────────────────────
+const TARGET   = getDailyWord();
+const MAX_ROWS = 5;
+let   currentRow  = 0;
+let   currentCol  = 0;
+let   currentGuess = [];
+let   gameOver    = false;
+let   keyMap      = {}; // letter -> state
+
+// ── Stats (localStorage) ───────────────────────────────────────
+function loadStats() {
+  const d = localStorage.getItem('wordle_io_stats');
+  return d ? JSON.parse(d) : { played:0, wins:0, streak:0, maxStreak:0, dist:[0,0,0,0,0] };
+}
+function saveStats(s) { localStorage.setItem('wordle_io_stats', JSON.stringify(s)); }
+
+function loadGameState() {
+  const d = localStorage.getItem('wordle_io_state');
+  if (!d) return null;
+  const s = JSON.parse(d);
+  if (s.word !== TARGET) return null;
+  return s;
+}
+function saveGameState(guesses, finished) {
+  localStorage.setItem('wordle_io_state', JSON.stringify({ word: TARGET, guesses, finished }));
+}
+
+// ── Build Grid ─────────────────────────────────────────────────
+const grid = document.getElementById('grid');
+const tiles = [];
+
+for (let r = 0; r < MAX_ROWS; r++) {
+  const row = document.createElement('div');
+  row.className = 'row';
+  row.id = `row-${r}`;
+  const rowTiles = [];
+  for (let c = 0; c < 5; c++) {
+    const tile = document.createElement('div');
+    tile.className = 'tile';
+    tile.dataset.letter = '';
+    row.appendChild(tile);
+    rowTiles.push(tile);
+  }
+  grid.appendChild(row);
+  tiles.push(rowTiles);
+}
+
+// ── Build Keyboard ─────────────────────────────────────────────
+const rows = ['QWERTYUIOP', 'ASDFGHJKL', '↵ZXCVBNM⌫'];
+const kbRows = ['kb-row-1','kb-row-2','kb-row-3'];
+
+rows.forEach((row, i) => {
+  const el = document.getElementById(kbRows[i]);
+  [...row].forEach(ch => {
+    const btn = document.createElement('button');
+    btn.className = 'key' + (ch === '↵' || ch === '⌫' ? ' wide' : '');
+    btn.textContent = ch;
+    btn.dataset.key  = ch;
+    btn.addEventListener('click', () => handleKey(ch));
+    el.appendChild(btn);
+  });
+});
+
+// ── Date Display ───────────────────────────────────────────────
+document.getElementById('date-display').textContent =
+  new Date().toLocaleDateString('en-US', { weekday:'short', month:'short', day:'numeric' });
+
+// ── Toast ──────────────────────────────────────────────────────
+function toast(msg, duration = 2200) {
+  const c = document.getElementById('toast-container');
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.textContent = msg;
+  c.appendChild(t);
+  setTimeout(() => t.remove(), duration);
+}
+
+// ── Core Game Logic ────────────────────────────────────────────
+function setTileLetter(r, c, letter) {
+  const tile = tiles[r][c];
+  tile.textContent = letter;
+  tile.dataset.letter = letter;
+}
+
+function evaluateGuess(guess) {
+  const result = Array(5).fill('gray');
+  const targetArr = [...TARGET];
+  const guessArr  = [...guess];
+  const used = Array(5).fill(false);
+
+  // Pass 1: exact matches
+  for (let i = 0; i < 5; i++) {
+    if (guessArr[i] === targetArr[i]) {
+      result[i] = 'green';
+      used[i] = true;
+      targetArr[i] = null;
+    }
+  }
+  // Pass 2: present but wrong position
+  for (let i = 0; i < 5; i++) {
+    if (result[i] === 'green') continue;
+    const idx = targetArr.indexOf(guessArr[i]);
+    if (idx !== -1) {
+      result[i] = 'yellow';
+      targetArr[idx] = null;
+    }
+  }
+  return result;
+}
+
+function flipRow(r, results, cb) {
+  const rowTiles = tiles[r];
+  rowTiles.forEach((t, i) => {
+    setTimeout(() => {
+      t.classList.add('flip');
+      setTimeout(() => t.classList.add(results[i]), 250 + i * 100);
+    }, i * 100);
+  });
+  setTimeout(cb, rowTiles.length * 100 + 500);
+}
+
+function submitGuess() {
+  if (currentGuess.length < 5) { shakeRow(currentRow); toast('Not enough letters'); return; }
+  const word = currentGuess.join('');
+  if (!VALID_GUESSES.has(word.toLowerCase())) { shakeRow(currentRow); toast('Not in word list'); return; }
+
+  const results = evaluateGuess(word);
+
+  flipRow(currentRow, results, () => {
+    // Update keyboard
+    word.split('').forEach((ch, i) => {
+      const prev = keyMap[ch];
+      if (prev !== 'green') {
+        if (results[i] === 'green' || prev !== 'yellow' && results[i] === 'yellow' || !prev) {
+          keyMap[ch] = results[i];
+        }
+      }
+      updateKeyColor(ch, keyMap[ch]);
+    });
+
+    const won = results.every(r => r === 'green');
+    gameOver = won || currentRow === MAX_ROWS - 1;
+
+    saveGameState(getGuessHistory().concat([word]), gameOver);
+
+    if (won) {
+      const msgs = ['Genius!','Magnificent!','Impressive!','Splendid!','Great!','Phew!'];
+      setTimeout(() => { toast(msgs[Math.min(currentRow, 5)]); triggerConfetti(); }, 300);
+      setTimeout(() => document.getElementById(`row-${currentRow}`).classList.add('bounce'), 600);
+      updateStats(true, currentRow + 1);
+    } else if (currentRow === MAX_ROWS - 1) {
+      setTimeout(() => toast(`The word was ${TARGET}`, 4000), 500);
+      updateStats(false, 0);
+    }
+
+    currentRow++;
+    currentCol = 0;
+    currentGuess = [];
+  });
+}
+
+let guessHistory = [];
+function getGuessHistory() { return guessHistory; }
+
+function handleKey(key) {
+  if (gameOver) return;
+  if (key === '⌫' || key === 'Backspace') {
+    if (currentCol > 0) {
+      currentCol--;
+      currentGuess.pop();
+      setTileLetter(currentRow, currentCol, '');
+    }
+  } else if (key === '↵' || key === 'Enter') {
+    submitGuess();
+  } else if (/^[A-Za-z]$/.test(key) && currentCol < 5) {
+    const ch = key.toUpperCase();
+    setTileLetter(currentRow, currentCol, ch);
+    currentGuess.push(ch);
+    currentCol++;
+  }
+}
+
+function shakeRow(r) {
+  const row = document.getElementById(`row-${r}`);
+  row.classList.remove('shake');
+  void row.offsetWidth;
+  row.classList.add('shake');
+  setTimeout(() => row.classList.remove('shake'), 500);
+}
+
+function updateKeyColor(ch, state) {
+  document.querySelectorAll(`.key[data-key="${ch}"]`).forEach(btn => {
+    btn.classList.remove('green','yellow','gray');
+    btn.classList.add(state);
+  });
+}
+
+// ── Stats ──────────────────────────────────────────────────────
+function updateStats(won, guessCount) {
+  const s = loadStats();
+  s.played++;
+  if (won) {
+    s.wins++;
+    s.streak++;
+    s.maxStreak = Math.max(s.streak, s.maxStreak);
+    s.dist[guessCount - 1]++;
+  } else {
+    s.streak = 0;
+  }
+  saveStats(s);
+}
+
+function openStats() {
+  const s = loadStats();
+  document.getElementById('s-played').textContent   = s.played;
+  document.getElementById('s-winpct').textContent   = s.played ? Math.round(s.wins/s.played*100) : 0;
+  document.getElementById('s-streak').textContent   = s.streak;
+  document.getElementById('s-maxstreak').textContent = s.maxStreak;
+
+  const maxD = Math.max(...s.dist, 1);
+  const bars = document.getElementById('dist-bars');
+  bars.innerHTML = '';
+  s.dist.forEach((v, i) => {
+    bars.innerHTML += `
+      <div class="dist-row">
+        <div class="dist-lbl">${i+1}</div>
+        <div class="dist-bar-wrap">
+          <div class="dist-bar" style="width:${Math.max(v/maxD*100,4)}%">${v}</div>
+        </div>
+      </div>`;
+  });
+
+  // Countdown to midnight
+  const now  = new Date();
+  const next = new Date(now); next.setHours(24,0,0,0);
+  const diff = next - now;
+  const h    = String(Math.floor(diff/3600000)).padStart(2,'0');
+  const m    = String(Math.floor(diff%3600000/60000)).padStart(2,'0');
+  const sec  = String(Math.floor(diff%60000/1000)).padStart(2,'0');
+  document.getElementById('next-word').innerHTML =
+    `Next word in <span>${h}:${m}:${sec}</span>`;
+
+  document.getElementById('modal-overlay').classList.add('open');
+}
+
+function closeStats(e) {
+  if (!e || e.target.id === 'modal-overlay') {
+    document.getElementById('modal-overlay').classList.remove('open');
+  }
+}
+
+// ── Keyboard Input ─────────────────────────────────────────────
+document.addEventListener('keydown', e => {
+  if (e.ctrlKey || e.altKey || e.metaKey) return;
+  handleKey(e.key === 'Enter' ? '↵' : e.key === 'Backspace' ? '⌫' : e.key);
+});
+
+// ── Confetti ───────────────────────────────────────────────────
+function triggerConfetti() {
+  const canvas = document.getElementById('confetti-canvas');
+  const ctx    = canvas.getContext('2d');
+  canvas.width  = window.innerWidth;
+  canvas.height = window.innerHeight;
+
+  const COLORS = ['#a855f7','#06b6d4','#ec4899','#22c55e','#f59e0b','#fff'];
+  const particles = Array.from({ length: 180 }, () => ({
+    x: Math.random() * canvas.width,
+    y: Math.random() * -canvas.height,
+    w: Math.random() * 10 + 4,
+    h: Math.random() * 6 + 2,
+    color: COLORS[Math.floor(Math.random() * COLORS.length)],
+    speed: Math.random() * 3 + 1.5,
+    angle: Math.random() * 360,
+    spin:  (Math.random() - .5) * 6,
+    drift: (Math.random() - .5) * 1.5,
+  }));
+
+  let frame;
+  function animate() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    let done = true;
+    particles.forEach(p => {
+      p.y += p.speed;
+      p.x += p.drift;
+      p.angle += p.spin;
+      if (p.y < canvas.height + 20) done = false;
+      ctx.save();
+      ctx.translate(p.x, p.y);
+      ctx.rotate(p.angle * Math.PI / 180);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.w/2, -p.h/2, p.w, p.h);
+      ctx.restore();
+    });
+    if (!done) frame = requestAnimationFrame(animate);
+    else ctx.clearRect(0, 0, canvas.width, canvas.height);
+  }
+  cancelAnimationFrame(frame);
+  animate();
+}
+
+// ── Restore State ──────────────────────────────────────────────
+(function restoreState() {
+  const saved = loadGameState();
+  if (!saved || !saved.guesses.length) return;
+
+  saved.guesses.forEach(word => {
+    guessHistory.push(word);
+    const results = evaluateGuess(word);
+    word.split('').forEach((ch, c) => {
+      setTileLetter(currentRow, c, ch);
+    });
+    // Apply colors immediately (no animation on restore)
+    results.forEach((res, c) => {
+      tiles[currentRow][c].classList.add(res);
+      const ch = word[c];
+      if (!keyMap[ch] || keyMap[ch] !== 'green') {
+        if (res === 'green' || res === 'yellow' && keyMap[ch] !== 'green') keyMap[ch] = res;
+        else if (!keyMap[ch]) keyMap[ch] = 'gray';
+      }
+    });
+    Object.entries(keyMap).forEach(([ch, state]) => updateKeyColor(ch, state));
+    currentRow++;
+    currentCol = 0;
+    currentGuess = [];
+  });
+
+  if (saved.finished) {
+    gameOver = true;
+    const lastGuess = saved.guesses[saved.guesses.length - 1];
+    if (lastGuess === TARGET) {
+      setTimeout(() => toast('Already solved today! Come back tomorrow.', 3000), 400);
+    } else {
+      setTimeout(() => toast(`The word was ${TARGET}`, 4000), 400);
+    }
+  }
+})();
+</script>
+</body>
+</html>
